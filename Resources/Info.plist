@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>Unarchiver</string>
+    <key>CFBundleDisplayName</key><string>Unarchiver</string>
+    <key>CFBundleIdentifier</key><string>local.unarchiver</string>
+    <key>CFBundleExecutable</key><string>Unarchiver</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key><string>Archive</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.zip-archive</string>
+                <string>org.7-zip.7-zip-archive</string>
+                <string>com.rarlab.rar-archive</string>
+                <string>public.tar-archive</string>
+                <string>org.gnu.gnu-zip-archive</string>
+                <string>org.gnu.gnu-zip-tar-archive</string>
+                <string>public.bzip2-archive</string>
+                <string>public.tar-bzip2-archive</string>
+                <string>org.tukaani.xz-archive</string>
+                <string>org.tukaani.tar-xz-archive</string>
+                <string>public.iso-image</string>
+                <string>com.microsoft.cab</string>
+                <string>public.cpio-archive</string>
+                <string>com.apple.xar-archive</string>
+                <string>org.tukaani.lzma-archive</string>
+                <string>cx.c3.lha-archive</string>
+                <string>org.debian.deb-archive</string>
+                <string>com.redhat.rpm-archive</string>
+                <string>local.unarchiver.cbz</string>
+                <string>local.unarchiver.cbr</string>
+                <string>local.unarchiver.cb7</string>
+                <string>public.archive</string>
+            </array>
+        </dict>
+    </array>
+    <!-- Comic-book archives have no system UTI; without these, Finder/Dock won't offer the app
+         (CFBundleTypeExtensions is ignored when LSItemContentTypes is present). -->
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key><string>local.unarchiver.cbz</string>
+            <key>UTTypeDescription</key><string>Comic Book Archive (ZIP)</string>
+            <key>UTTypeConformsTo</key><array><string>public.zip-archive</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>cbz</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>local.unarchiver.cbr</string>
+            <key>UTTypeDescription</key><string>Comic Book Archive (RAR)</string>
+            <key>UTTypeConformsTo</key><array><string>com.rarlab.rar-archive</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>cbr</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>local.unarchiver.cb7</string>
+            <key>UTTypeDescription</key><string>Comic Book Archive (7z)</string>
+            <key>UTTypeConformsTo</key><array><string>org.7-zip.7-zip-archive</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>cb7</string></array></dict>
+        </dict>
+    </array>
+</dict>
+</plist>
