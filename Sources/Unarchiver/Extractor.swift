@@ -54,7 +54,15 @@ enum Extractor {
         let extractionError = unarchiver.unarchive()
         if delegate.wasCancelled { throw ExtractError.failed("Cancelled: password prompt.") }
 
-        let passwordFailed = delegate.passwordFailed || parseError == Int32(XADPasswordError) || extractionError == Int32(XADPasswordError)
+        let passwordAttempted = password != nil || delegate.requestedPassword
+        let badPasswordDataError = [parseError, extractionError].contains {
+            $0 == Int32(XADDecrunchError) || $0 == Int32(XADChecksumError)
+        }
+        // Some encrypted formats (notably 7z header encryption) report bad credentials
+        // as a decrunch/checksum failure instead of XADPasswordError. Only reinterpret
+        // those errors after XAD has requested or received a password; unsupported methods
+        // and ordinary damaged archives therefore fail once instead of reopening the prompt.
+        let passwordFailed = delegate.passwordFailed || parseError == Int32(XADPasswordError) || extractionError == Int32(XADPasswordError) || (passwordAttempted && badPasswordDataError)
         if passwordFailed {
             throw ExtractError.needsPassword(wrong: password != nil || delegate.requestedPassword)
         }
