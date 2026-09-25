@@ -6,6 +6,7 @@
     <key>CFBundleDisplayName</key><string>Unarchiver</string>
     <key>CFBundleIdentifier</key><string>local.unarchiver</string>
     <key>CFBundleExecutable</key><string>Unarchiver</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key><string>1</string>
@@ -40,6 +41,8 @@
                 <string>local.unarchiver.cbz</string>
                 <string>local.unarchiver.cbr</string>
                 <string>local.unarchiver.cb7</string>
+                <string>local.unarchiver.mcpc</string>
+                <string>local.unarchiver.output</string>
                 <string>public.archive</string>
             </array>
         </dict>
@@ -68,6 +71,20 @@
             <key>UTTypeConformsTo</key><array><string>org.7-zip.7-zip-archive</string></array>
             <key>UTTypeTagSpecification</key>
             <dict><key>public.filename-extension</key><array><string>cb7</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>local.unarchiver.mcpc</string>
+            <key>UTTypeDescription</key><string>MCP Export Archive (7z)</string>
+            <key>UTTypeConformsTo</key><array><string>org.7-zip.7-zip-archive</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>mcpc</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>local.unarchiver.output</string>
+            <key>UTTypeDescription</key><string>Gzip-Compressed Log Output</string>
+            <key>UTTypeConformsTo</key><array><string>org.gnu.gnu-zip-archive</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>output</string></array></dict>
         </dict>
     </array>
 </dict>

@@ -19,9 +19,10 @@ enum Prefs {
     static var fixedDestination: String { d.string(forKey: "fixedDestination") ?? defaultDestination }
     static var openAfter: Bool { d.bool(forKey: "openAfter") }
     static var trashAfter: Bool { d.bool(forKey: "trashAfter") }
+    static var extractNested: Bool { d.bool(forKey: "extractNested") }
 }
 struct Job: Identifiable {
-    enum State { case queued, running, done(URL), failed(String) }
+    enum State { case queued, running(Double), done(URL, [String]), failed(String) }
     let id = UUID()
     let archive: URL
     var state: State = .queued
@@ -82,7 +83,7 @@ final class Queue: ObservableObject {
     }
 
     private func run(_ job: Job) async {
-        update(job.id, .running)
+        update(job.id, .running(0))
         let archive = job.archive
         guard let dest = destination(for: archive) else {
             jobs.removeAll { $0.id == job.id }
@@ -92,15 +93,40 @@ final class Queue: ObservableObject {
         while true {
             do {
                 let pw = password
+                let nested = Prefs.extractNested
                 let result = try await Task.detached {
-                    try Extractor.extract(archive, to: dest, password: pw)
+                    let requestPassword: (Bool) -> String? = { retry in
+                        if Thread.isMainThread {
+                            return MainActor.assumeIsolated { self.askPassword(for: archive, retry: retry) }
+                        }
+                        return DispatchQueue.main.sync {
+                            MainActor.assumeIsolated { self.askPassword(for: archive, retry: retry) }
+                        }
+                    }
+                    let outer = try Extractor.extract(
+                        archive,
+                        to: dest,
+                        password: pw,
+                        requestPassword: requestPassword,
+                        progress: { value in
+                            Task { @MainActor in self.updateProgress(job.id, value) }
+                        }
+                    )
+                    guard nested else { return outer }
+                    let failures = Extractor.extractNested(in: outer.url, password: pw, requestPassword: requestPassword)
+                    // A lone nested archive is replaced by its own contents.
+                    let url = FileManager.default.fileExists(atPath: outer.url.path) ? outer.url : outer.url.deletingLastPathComponent()
+                    return ExtractionResult(url: url, failures: outer.failures + failures, volumes: outer.volumes)
                 }.value
-                update(job.id, .done(result))
-                if Prefs.openAfter { NSWorkspace.shared.activateFileViewerSelecting([result]) }
-                if Prefs.trashAfter { try? FileManager.default.trashItem(at: archive, resultingItemURL: nil) }
+                update(job.id, .done(result.url, result.failures))
+                if Prefs.openAfter { NSWorkspace.shared.activateFileViewerSelecting([result.url]) }
+                if Prefs.trashAfter && result.failures.isEmpty {
+                    let volumes = result.volumes.isEmpty ? [archive] : result.volumes
+                    for volume in volumes { try? FileManager.default.trashItem(at: volume, resultingItemURL: nil) }
+                }
                 return
-            } catch ExtractError.needsPassword {
-                guard let pw = askPassword(for: archive, retry: password != nil) else {
+            } catch ExtractError.needsPassword(let wrong) {
+                guard let pw = askPassword(for: archive, retry: wrong) else {
                     update(job.id, .failed("Cancelled: password required."))
                     return
                 }
@@ -120,6 +146,11 @@ final class Queue: ObservableObject {
 
     private func update(_ id: UUID, _ state: Job.State) {
         if let i = jobs.firstIndex(where: { $0.id == id }) { jobs[i].state = state }
+    }
+
+    private func updateProgress(_ id: UUID, _ progress: Double) {
+        guard let job = jobs.first(where: { $0.id == id }), case .running = job.state else { return }
+        update(id, .running(progress))
     }
 
     private func askPassword(for archive: URL, retry: Bool) -> String? {
@@ -194,6 +225,7 @@ func chooseArchives() {
 struct ContentView: View {
     @EnvironmentObject var queue: Queue
     @State private var targeted = false
+    @AppStorage("extractNested") private var extractNested = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -203,6 +235,9 @@ struct ContentView: View {
                 Text("zip · 7z · rar · tar · gz · bz2 · xz · iso · cab · lha · cpio · xar")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("Open Archive…") { chooseArchives() }
+                Toggle("Also extract archives found inside archives", isOn: $extractNested)
+                    .toggleStyle(.checkbox)
+                    .font(.callout)
             }
             .frame(maxWidth: .infinity, minHeight: 170)
             .background(RoundedRectangle(cornerRadius: 12)
@@ -231,12 +266,26 @@ struct JobRow: View {
             case .queued:
                 Image(systemName: "clock").foregroundStyle(.secondary)
                 Text(job.archive.lastPathComponent).foregroundStyle(.secondary)
-            case .running:
-                ProgressView().controlSize(.small)
-                Text(job.archive.lastPathComponent)
-            case .done(let url):
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text(job.archive.lastPathComponent)
+            case .running(let progress):
+                ProgressView(value: progress) {
+                    Text(job.archive.lastPathComponent).lineLimit(1)
+                }
+                .progressViewStyle(.linear)
+            case .done(let url, let failures):
+                if failures.isEmpty {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text(job.archive.lastPathComponent)
+                } else {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                    VStack(alignment: .leading) {
+                        Text(job.archive.lastPathComponent)
+                        Text("Extracted with \(failures.count) problem(s)")
+                            .font(.caption)
+                            .foregroundStyle(.yellow)
+                        Text(failures[0]).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    .help(failures.joined(separator: "\n"))
+                }
                 Spacer()
                 Button("Show") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                     .buttonStyle(.link)
@@ -257,6 +306,7 @@ struct SettingsView: View {
         FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path
     @AppStorage("openAfter") var openAfter = false
     @AppStorage("trashAfter") var trashAfter = false
+    @AppStorage("extractNested") var extractNested = false
 
     var body: some View {
         Form {
@@ -276,6 +326,7 @@ struct SettingsView: View {
                 }
             }
             Toggle("Reveal extracted files in Finder", isOn: $openAfter)
+            Toggle("Also extract archives found inside archives", isOn: $extractNested)
             Toggle("Move archive to Trash after extraction", isOn: $trashAfter)
         }
         .padding(20)

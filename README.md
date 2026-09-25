@@ -18,6 +18,7 @@ Built with SwiftUI. Extraction is handled by macOS's built-in `bsdtar` (libarchi
 - **Settings (⌘,):**
   - Choose where to extract: next to the archive, a folder you pick each time, or a fixed folder.
   - Optionally show the results in Finder.
+  - Optionally extract archives found inside archives, recursively (up to 8 levels). Zip-based documents such as `.docx` or `.jar` are left alone, and an inner archive is deleted only after it extracts cleanly.
   - Optionally move the archive to the Trash afterwards.
 
 ## Requirements
