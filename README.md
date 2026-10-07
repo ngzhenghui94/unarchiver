@@ -42,6 +42,8 @@ cd unarchiver
 cp -R build/Archiver.app /Applications/
 ```
 
+To reproduce the v1.0 release, download `XADMaster-local-changes.patch` from the release and apply it from `Vendor/XADMaster` with `git apply /path/to/XADMaster-local-changes.patch` before running `./build.sh`. The release includes both dependency source archives and their licenses.
+
 `build.sh` does the following:
 
 1. Fetches the `Vendor/` submodules if they're missing.
