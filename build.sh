@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds build/Unarchiver.app (release, ad-hoc signed).
+# Builds build/Archiver.app (release, ad-hoc signed).
 set -e
 cd "$(dirname "$0")"
 
@@ -53,12 +53,12 @@ if [ ! -d "$UNIVERSALDETECTOR_FRAMEWORK" ]; then
     exit 1
 fi
 
-APP=build/Unarchiver.app
+APP=build/Archiver.app
 swift build -c release
 BIN_DIR=$(swift build -c release --show-bin-path)
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
-cp "$BIN_DIR/Unarchiver" "$APP/Contents/MacOS/"
+cp "$BIN_DIR/Archiver" "$APP/Contents/MacOS/"
 cp Resources/Info.plist "$APP/Contents/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 ditto "$UNIVERSALDETECTOR_FRAMEWORK" "$APP/Contents/Frameworks/UniversalDetector.framework"

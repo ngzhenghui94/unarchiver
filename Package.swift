@@ -5,11 +5,16 @@ import PackageDescription
 let frameworkDirectory = Context.packageDirectory + "/build/deps"
 
 let package = Package(
-    name: "Unarchiver",
+    name: "Archiver",
     platforms: [.macOS(.v14)],
     targets: [
+        .systemLibrary(
+            name: "CLibArchive",
+            path: "Sources/CLibArchive"
+        ),
         .executableTarget(
-            name: "Unarchiver",
+            name: "Archiver",
+            dependencies: ["CLibArchive"],
             path: "Sources/Unarchiver",
             swiftSettings: [
                 .unsafeFlags(["-F", frameworkDirectory])

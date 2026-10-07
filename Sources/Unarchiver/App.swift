@@ -9,6 +9,13 @@ enum DestinationMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum OperationMode: String, CaseIterable, Identifiable {
+    case extract = "Extract"
+    case compress = "Compress"
+
+    var id: String { rawValue }
+}
+
 let defaultDestination = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path
 
 enum Prefs {
@@ -22,10 +29,35 @@ enum Prefs {
     static var extractNested: Bool { d.bool(forKey: "extractNested") }
 }
 struct Job: Identifiable {
+    enum Operation {
+        case extract(URL)
+        case compress(sources: [URL], output: URL)
+
+        var displayName: String {
+            switch self {
+            case .extract(let archive): return archive.lastPathComponent
+            case .compress(_, let output): return output.lastPathComponent
+            }
+        }
+
+        var verb: String {
+            switch self {
+            case .extract: return "Extract"
+            case .compress: return "Compress"
+            }
+        }
+    }
+
     enum State { case queued, running(Double), done(URL, [String]), failed(String) }
     let id = UUID()
-    let archive: URL
+    let operation: Operation
     var state: State = .queued
+}
+
+// Cleared after the worker finishes even while its completed queue task is retained.
+private final class CompressionPassword: @unchecked Sendable {
+    var value: String?
+    init(_ value: String?) { self.value = value }
 }
 
 @MainActor
@@ -48,13 +80,70 @@ final class Queue: ObservableObject {
     func open(_ urls: [URL]) {
         guard !rejectsNewJobs else { return }
         for url in urls where url.isFileURL {
-            let job = Job(archive: url, state: .queued)
+            let job = Job(operation: .extract(url), state: .queued)
             jobs.insert(job, at: 0)
             let previous = tail
             tail = Task { @MainActor in
                 if let previous { await previous.value }
                 await self.run(job)
                 self.finishIfDrained()
+            }
+        }
+    }
+
+    func compress(_ urls: [URL]) {
+        guard !rejectsNewJobs, !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.zip]
+        panel.nameFieldStringValue = urls.count == 1 ? urls[0].lastPathComponent + ".zip" : "Archive.zip"
+        panel.directoryURL = urls[0].deletingLastPathComponent()
+        panel.prompt = "Continue"
+        panel.message = "Choose where to save the ZIP. Existing files are kept using a numbered name."
+        guard panel.runModal() == .OK, let output = panel.url else { return }
+        let alert = NSAlert()
+        alert.messageText = "ZIP password (optional)"
+        alert.informativeText = "Leave both fields blank for a regular ZIP. A password enables AES-256; filenames remain visible. Open encrypted ZIPs with Archiver or 7-Zip."
+        let passwordField = NSSecureTextField()
+        passwordField.placeholderString = "Password (optional)"
+        passwordField.setAccessibilityLabel("Password (optional)")
+        let confirmation = NSSecureTextField()
+        confirmation.placeholderString = "Confirm password"
+        confirmation.setAccessibilityLabel("Confirm password")
+        let fields = NSStackView(views: [passwordField, confirmation])
+        fields.orientation = .vertical
+        fields.alignment = .leading
+        passwordField.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        confirmation.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        fields.spacing = 8
+        fields.frame = NSRect(x: 0, y: 0, width: 300, height: 56)
+        alert.accessoryView = fields
+        alert.addButton(withTitle: "Compress")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = passwordField
+        defer { passwordField.stringValue = ""; confirmation.stringValue = "" }
+        while true {
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            if passwordField.stringValue == confirmation.stringValue { break }
+            alert.messageText = "Passwords do not match"
+        }
+        let secret = CompressionPassword(passwordField.stringValue.isEmpty ? nil : passwordField.stringValue)
+        let job = Job(operation: .compress(sources: urls, output: output))
+        jobs.insert(job, at: 0)
+        let previous = tail
+        tail = Task { @MainActor in
+            if let previous { await previous.value }
+            defer { secret.value = nil; self.finishIfDrained() }
+            self.update(job.id, .running(0))
+            do {
+                let result = try await Task.detached {
+                    try Compressor.compress(urls, to: output, password: secret.value) { value in
+                        Task { @MainActor in self.updateProgress(job.id, value) }
+                    }
+                }.value
+                self.update(job.id, .done(result, []))
+                if Prefs.openAfter { NSWorkspace.shared.activateFileViewerSelecting([result]) }
+            } catch {
+                self.update(job.id, .failed(error.localizedDescription))
             }
         }
     }
@@ -84,7 +173,7 @@ final class Queue: ObservableObject {
 
     private func run(_ job: Job) async {
         update(job.id, .running(0))
-        let archive = job.archive
+        guard case .extract(let archive) = job.operation else { return }
         guard let dest = destination(for: archive) else {
             jobs.removeAll { $0.id == job.id }
             return
@@ -179,8 +268,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard queue.isBusy else { return .terminateNow }
 
             let alert = NSAlert()
-            alert.messageText = "Extraction in progress"
-            alert.informativeText = "The current extraction and any queued archives will finish before the app quits."
+            alert.messageText = "Archive operation in progress"
+            alert.informativeText = "The current operation and any queued jobs will finish before the app quits."
             alert.addButton(withTitle: "Quit When Done")
             alert.addButton(withTitle: "Cancel")
             NSApp.activate()
@@ -200,13 +289,14 @@ struct UnarchiverApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
     var body: some Scene {
-        Window("Unarchiver", id: "main") {
+        Window("Archiver", id: "main") {
             ContentView().environmentObject(Queue.shared)
         }
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open Archive…") { chooseArchives() }.keyboardShortcut("o")
+                Button("Compress Files…") { chooseFilesToCompress() }.keyboardShortcut("k")
             }
         }
         Settings { SettingsView() }
@@ -222,30 +312,51 @@ func chooseArchives() {
     if panel.runModal() == .OK { Queue.shared.open(panel.urls) }
 }
 
+@MainActor
+func chooseFilesToCompress() {
+    let panel = NSOpenPanel()
+    panel.allowsMultipleSelection = true
+    panel.canChooseFiles = true
+    panel.canChooseDirectories = true
+    panel.prompt = "Compress"
+    if panel.runModal() == .OK { Queue.shared.compress(panel.urls) }
+}
+
 struct ContentView: View {
     @EnvironmentObject var queue: Queue
     @State private var targeted = false
+    @State private var mode: OperationMode = .extract
     @AppStorage("extractNested") private var extractNested = false
 
     var body: some View {
         VStack(spacing: 12) {
+            Picker("Operation", selection: $mode) {
+                ForEach(OperationMode.allCases) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented)
             VStack(spacing: 8) {
                 Image(systemName: "archivebox").font(.system(size: 44))
-                Text("Drop archives here").font(.headline)
-                Text("zip · 7z · rar · tar · gz · bz2 · xz · iso · cab · lha · cpio · xar")
+                Text(mode == .extract ? "Drop archives here" : "Drop files or folders here").font(.headline)
+                Text(mode == .extract ? "zip · 7z · rar · tar · gz · bz2 · xz · iso · cab · lha · cpio · xar" : "Create one ZIP · Optional AES-256 password")
                     .font(.caption).foregroundStyle(.secondary)
-                Button("Open Archive…") { chooseArchives() }
-                Toggle("Also extract archives found inside archives", isOn: $extractNested)
-                    .toggleStyle(.checkbox)
-                    .font(.callout)
+                if mode == .extract {
+                    Button("Open Archive…") { chooseArchives() }
+                    Toggle("Also extract archives found inside archives", isOn: $extractNested)
+                        .toggleStyle(.checkbox).font(.callout)
+                } else {
+                    Button("Choose Files…") { chooseFilesToCompress() }
+                }
             }
             .frame(maxWidth: .infinity, minHeight: 170)
             .background(RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6]))
                 .foregroundStyle(targeted ? Color.accentColor : .secondary.opacity(0.5)))
             .dropDestination(for: URL.self) { urls, _ in
-                queue.open(urls)
-                return !urls.isEmpty
+                guard !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return false }
+                let operation = mode
+                DispatchQueue.main.async {
+                    if operation == .extract { queue.open(urls) } else { queue.compress(urls) }
+                }
+                return true
             } isTargeted: { targeted = $0 }
 
             if !queue.jobs.isEmpty {
@@ -265,20 +376,20 @@ struct JobRow: View {
             switch job.state {
             case .queued:
                 Image(systemName: "clock").foregroundStyle(.secondary)
-                Text(job.archive.lastPathComponent).foregroundStyle(.secondary)
+                Text(job.operation.displayName).foregroundStyle(.secondary)
             case .running(let progress):
                 ProgressView(value: progress) {
-                    Text(job.archive.lastPathComponent).lineLimit(1)
+                    Text("\(job.operation.verb): \(job.operation.displayName)").lineLimit(1)
                 }
                 .progressViewStyle(.linear)
             case .done(let url, let failures):
                 if failures.isEmpty {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    Text(job.archive.lastPathComponent)
+                    Text(job.operation.displayName)
                 } else {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
                     VStack(alignment: .leading) {
-                        Text(job.archive.lastPathComponent)
+                        Text(job.operation.displayName)
                         Text("Extracted with \(failures.count) problem(s)")
                             .font(.caption)
                             .foregroundStyle(.yellow)
@@ -292,7 +403,7 @@ struct JobRow: View {
             case .failed(let msg):
                 Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
                 VStack(alignment: .leading) {
-                    Text(job.archive.lastPathComponent)
+                    Text(job.operation.displayName)
                     Text(msg).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
