@@ -7,6 +7,7 @@ let frameworkDirectory = Context.packageDirectory + "/build/deps"
 let package = Package(
     name: "Archiver",
     platforms: [.macOS(.v14)],
+    dependencies: [.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")],
     targets: [
         .systemLibrary(
             name: "CLibArchive",
@@ -14,7 +15,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Archiver",
-            dependencies: ["CLibArchive"],
+            dependencies: ["CLibArchive", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/Unarchiver",
             swiftSettings: [
                 .unsafeFlags(["-F", frameworkDirectory])

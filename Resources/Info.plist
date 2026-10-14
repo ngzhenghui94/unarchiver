@@ -12,6 +12,15 @@
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>SUFeedURL</key><string>https://raw.githubusercontent.com/ngzhenghui94/homebrew-tap/main/appcasts/archiver.xml</string>
+    <key>SUPublicEDKey</key><string>ogSJSN3POPY/0djBMOpOVyHZxcLbooaAfJYwnin6RCw=</string>
+    <key>SURequireSignedFeed</key><true/>
+    <key>SUVerifyUpdateBeforeExtraction</key><true/>
+    <key>SUEnableAutomaticChecks</key><false/>
+    <key>SUAutomaticallyUpdate</key><false/>
+    <key>SUAllowsAutomaticUpdates</key><false/>
+    <key>SUSendProfileInfo</key><false/>
+    <key>SUEnableSystemProfiling</key><false/>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

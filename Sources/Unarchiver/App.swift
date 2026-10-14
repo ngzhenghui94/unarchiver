@@ -78,7 +78,7 @@ final class Queue: ObservableObject {
     }
 
     func open(_ urls: [URL]) {
-        guard !rejectsNewJobs else { return }
+        guard !rejectsNewJobs, !AppUpdates.shared.installing else { return }
         for url in urls where url.isFileURL {
             let job = Job(operation: .extract(url), state: .queued)
             jobs.insert(job, at: 0)
@@ -92,7 +92,7 @@ final class Queue: ObservableObject {
     }
 
     func compress(_ urls: [URL]) {
-        guard !rejectsNewJobs, !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return }
+        guard !rejectsNewJobs, !AppUpdates.shared.installing, !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.zip]
         panel.nameFieldStringValue = urls.count == 1 ? urls[0].lastPathComponent + ".zip" : "Archive.zip"
@@ -257,6 +257,7 @@ final class Queue: ObservableObject {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) { AppUpdates.shared.start() }
     // Finder "Open With" / double-click / dropping on the Dock icon.
     func application(_ application: NSApplication, open urls: [URL]) {
         Task { @MainActor in Queue.shared.open(urls) }
@@ -284,9 +285,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
-@main
 struct UnarchiverApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var updates = AppUpdates.shared
 
     var body: some Scene {
         Window("Archiver", id: "main") {
@@ -294,6 +295,10 @@ struct UnarchiverApp: App {
         }
         .windowResizability(.contentSize)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updates.checkForUpdates() }
+                    .disabled(!updates.canCheckForUpdates || Queue.shared.isBusy || updates.installing)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open Archive…") { chooseArchives() }.keyboardShortcut("o")
                 Button("Compress Files…") { chooseFilesToCompress() }.keyboardShortcut("k")

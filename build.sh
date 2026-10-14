@@ -1,7 +1,14 @@
 #!/bin/sh
-# Builds build/Archiver.app (release, ad-hoc signed).
-set -e
+# Build, Developer ID sign, notarize, and publish an immutable release.
+set -eu
 cd "$(dirname "$0")"
+mkdir -p build
+LOCK="$PWD/build/.build-lock"
+mkdir "$LOCK" 2>/dev/null || { echo "Build already running or interrupted; inspect $LOCK before removing." >&2; exit 1; }
+trap 'rmdir "$LOCK"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+[ "$#" -eq 0 ] || { echo "Usage: $0 (builds and publishes a notarized release)" >&2; exit 1; }
 
 if [ ! -f Vendor/XADMaster/XADMaster.xcodeproj/project.pbxproj ] ||
    [ ! -f Vendor/UniversalDetector/UniversalDetector.xcodeproj/project.pbxproj ]; then
@@ -53,18 +60,26 @@ if [ ! -d "$UNIVERSALDETECTOR_FRAMEWORK" ]; then
     exit 1
 fi
 
-APP=build/Archiver.app
+APP=build/staging/Archiver.app
 swift build -c release
 BIN_DIR=$(swift build -c release --show-bin-path)
-rm -rf "$APP"
+if [ -e "$APP" ]; then
+    [ ! -L "$APP" ] && [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = local.unarchiver ] || { echo "Refusing unrelated staging app" >&2; exit 1; }
+    rm -rf "$APP"
+fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN_DIR/Archiver" "$APP/Contents/MacOS/"
 cp Resources/Info.plist "$APP/Contents/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 ditto "$UNIVERSALDETECTOR_FRAMEWORK" "$APP/Contents/Frameworks/UniversalDetector.framework"
 ditto "$XADMASTER_FRAMEWORK" "$APP/Contents/Frameworks/XADMaster.framework"
+ditto .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework "$APP/Contents/Frameworks/Sparkle.framework"
 # Sign the dependency before its parent framework, then the app bundle.
 codesign --force --sign - "$APP/Contents/Frameworks/UniversalDetector.framework"
 codesign --force --sign - "$APP/Contents/Frameworks/XADMaster.framework"
+codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - "$APP"
-echo "Built $APP"
+"$APP/Contents/MacOS/Archiver" --selftest
+python3 release.py --selftest
+python3 release.py
+echo "Built and published notarized build/Archiver.app"

@@ -35,23 +35,13 @@ Built with SwiftUI on top of [XADMaster](https://github.com/MacPaw/XADMaster), t
 
 ## Build and install
 
-```sh
-git clone --recursive https://github.com/ngzhenghui94/unarchiver.git
-cd unarchiver
-./build.sh
-cp -R build/Archiver.app /Applications/
-```
+Run `./build.sh` from the maintained checkout. Every normal build automatically chooses a new numeric version and increasing build number, builds the app with Sparkle 2.10.0, signs with the existing Developer ID Application certificate for team `F57QJC4XU3`, submits using Keychain profile `notary`, staples and validates Apple's ticket, checks code signatures and Gatekeeper, then publishes a new immutable GitHub release. Xcode, Python 3, authenticated GitHub CLI push access, and the existing organization Sparkle signing key (Keychain account `local.swissKnife`) are required. No signing keys are exported or Keychain permissions changed.
 
-To reproduce the v1.0 release, download `XADMaster-local-changes.patch` from the release and apply it from `Vendor/XADMaster` with `git apply /path/to/XADMaster-local-changes.patch` before running `./build.sh`. The release includes both dependency source archives and their licenses.
+The final notarized app remains `build/Archiver.app`; immutable apps and packages are retained in `build/releases/VERSION/`. The normal build runs the updater safety and numeric release self-tests. Installed copies are never replaced by the build. Quit the installed app, then copy the final app to Applications when you intend to install it; do not disable Gatekeeper or remove quarantine.
 
-`build.sh` does the following:
+### In-app updates
 
-1. Fetches the `Vendor/` submodules if they're missing.
-2. Builds `XADMaster.framework` (with UniversalDetector) into `build/deps/`.
-3. Builds the Swift app and embeds both frameworks.
-4. Signs everything ad hoc so it can run on your Mac.
-
-The app is ad-hoc signed, not notarized. On another Mac, Gatekeeper may require approval in **System Settings → Privacy & Security → Open Anyway** after attempting to open it. Only approve a build whose source you trust. Packaging does not disable quarantine or Gatekeeper.
+Choose **Archiver → Check for Updates…**. Checks and downloads are manual only; no system profile is sent. Both the feed and ZIP use verified Ed25519 signatures, verification happens before extraction, and the replacement app must retain the bundle identity `local.unarchiver` and publisher's Developer ID identity. Updates reject checks during file work, block new extraction/compression while installation is pending, and wait for queued work to drain before relaunch. Canceling or failing an update releases its own installation guard. An older build without Sparkle must first be replaced manually with a notarized release.
 
 ## Homebrew
 
@@ -83,21 +73,15 @@ For a rebuilt app, run `./package.sh --local`, copy the cask into the tap again,
 
 `./package.sh` defaults to `--local`. For the shared local tap containing all five apps, see `../homebrew-tap/README.md`; the single-app workflow above remains independent.
 
-### Prepare a public release
+### Publish a release
 
-Set the intended version in `Resources/Info.plist`, build (and, for trusted public distribution, Developer ID sign, notarize, and staple the app), then run:
+Normal `./build.sh` now performs publication end to end. The release destination stays `ngzhenghui94/unarchiver` at tag `vVERSION`, containing `Archiver-VERSION-arm64.zip`, a signed `appcast.xml`, and `Archiver-VERSION-archive-sources.tar.gz`. Only vendored LGPL archive dependency sources and rebuild instructions accompany the binary; authored app source is not included in release assets or copied to the Homebrew tap. Existing releases, including v1.0, are never overwritten.
 
-```sh
-./package.sh --release
-mkdir -p ../homebrew-tap/Casks
-cp build/homebrew/release/Casks/archiver.rb ../homebrew-tap/Casks/archiver.rb
-```
+Publication uploads a draft, downloads and checks every asset's SHA-256, publishes it, verifies HTTPS public downloads, then commits the cask and signed feed to `ngzhenghui94/homebrew-tap`. The app-local `build/update-tap` clone is fetched/rebased before a normal push; the shared sibling tap is never edited. The live feed is `https://raw.githubusercontent.com/ngzhenghui94/homebrew-tap/main/appcasts/archiver.xml`.
 
-This creates `build/homebrew/release/Archiver-VERSION-arm64.zip` and `build/homebrew/release/Casks/archiver.rb`, deriving `VERSION` from the built app and computing the ZIP's real SHA-256. The cask targets this repository's GitHub release asset at tag `vVERSION`. Local and release outputs are separate; neither command publishes anything or installs the app.
+`./package.sh --local` packages the final app without publishing; `./package.sh --release` requires a stapled notarized app, signs its update archive/feed, and refuses to overwrite its immutable `build/releases/VERSION/package` directory. The normal release already performs that step.
 
-The copy command stages the release definition in the sibling tap checkout; it does not publish it. The exact release URL is `https://github.com/ngzhenghui94/unarchiver/releases/download/vVERSION/Archiver-VERSION-arm64.zip`.
-
-After publication is authorized, upload that exact ZIP to the matching GitHub release and commit the generated release cask into the `Casks/` directory of `ngzhenghui94/homebrew-tap`. Publish the source and corresponding dependency modifications as required by their licenses. Do not publish the local cask, change the ZIP after generating its checksum, or advertise public installation before the release asset and tap actually exist.
+On failure, preserve `build/releases` and `build/update-tap`. Inspect `notarization.json`, any Apple submission and GitHub draft, and any unpushed tap commit before retrying. Never blindly resubmit an unknown Apple result, overwrite assets, or remove a build lock without checking whether its process is still running. An interrupted attempt may reserve a version; the next build advances past it.
 
 After publishing future versions, consumers can run:
 
@@ -106,7 +90,7 @@ brew tap ngzhenghui94/tap
 brew install --cask ngzhenghui94/tap/archiver
 ```
 
-Later, use `brew upgrade --cask ngzhenghui94/tap/archiver` or `brew uninstall --cask ngzhenghui94/tap/archiver`. These public commands are not usable yet.
+Later, use `brew upgrade --cask ngzhenghui94/tap/archiver` or `brew uninstall --cask ngzhenghui94/tap/archiver`. Upgrades become available when a newer release asset and matching tap cask are published.
 
 ## Project layout
 
