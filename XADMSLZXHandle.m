@@ -282,7 +282,7 @@
 			int val=CSInputNextSymbolUsingCode(input,precode);
 			int n,length;
 
-			if(val<=16)
+			if(val>=0 && val<=16)
 			{
 				n=1;
 				length=(lengths[i]+17-val)%17;
@@ -297,8 +297,9 @@
 				n=CSInputNextBitString(input,5+fix)+20-fix;
 				length=0;
 			}
-			else if(val==19)
+			else
 			{
+				if(val!=19) [XADException raiseDecrunchException];
 				n=CSInputNextBitString(input,1)+4-fix;
 				int newval=CSInputNextSymbolUsingCode(input,precode);
 				length=(lengths[i]+17-newval)%17;

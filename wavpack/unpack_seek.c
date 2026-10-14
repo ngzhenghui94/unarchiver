@@ -38,7 +38,7 @@ int WavpackSeekSample (WavpackContext *wpc, uint32_t sample)
 int WavpackSeekSample64 (WavpackContext *wpc, int64_t sample)
 {
     WavpackStream *wps = wpc->streams ? wpc->streams [wpc->current_stream = 0] : NULL;
-    uint32_t bcount, samples_to_skip, samples_to_decode = 0;
+    uint32_t bcount, samples_to_skip;
     int32_t *buffer;
 
     if (wpc->total_samples == -1 || sample >= wpc->total_samples ||
@@ -52,6 +52,8 @@ int WavpackSeekSample64 (WavpackContext *wpc, int64_t sample)
 #endif
 
 #ifdef ENABLE_DSD
+    uint32_t samples_to_decode = 0;
+
     if (wpc->decimation_context) {      // the decimation code needs some context to be sample accurate
         if (sample < 16) {
             samples_to_decode = (uint32_t) sample;

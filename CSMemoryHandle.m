@@ -37,7 +37,8 @@
 
 +(CSMemoryHandle *)memoryHandleForReadingMappedFile:(NSString *)filename
 {
-	return [[[CSMemoryHandle alloc] initWithData:[NSData dataWithContentsOfMappedFile:filename]] autorelease];
+	return [[[CSMemoryHandle alloc] initWithData:[NSData dataWithContentsOfFile:filename
+	options:NSDataReadingMappedAlways error:NULL]] autorelease];
 }
 
 +(CSMemoryHandle *)memoryHandleForWriting

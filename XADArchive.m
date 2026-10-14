@@ -1111,13 +1111,16 @@ fileFraction:(double)fileprogress estimatedTotalFraction:(double)totalprogress
 
 	if(mod)
 	{
-		NSCalendarDate *cal=[mod dateWithCalendarFormat:nil timeZone:[NSTimeZone defaultTimeZone]];
-		fi->xfi_Date.xd_Year=[cal yearOfCommonEra];
-		fi->xfi_Date.xd_Month=[cal monthOfYear];
-		fi->xfi_Date.xd_Day=[cal dayOfMonth];
-		fi->xfi_Date.xd_Hour=[cal hourOfDay];
-		fi->xfi_Date.xd_Minute=[cal minuteOfHour];
-		fi->xfi_Date.xd_Second=[cal secondOfMinute];
+		NSCalendar *calendar=[[[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian] autorelease];
+		[calendar setTimeZone:[NSTimeZone defaultTimeZone]];
+		NSDateComponents *components=[calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay
+		|NSCalendarUnitHour|NSCalendarUnitMinute|NSCalendarUnitSecond fromDate:mod];
+		fi->xfi_Date.xd_Year=[components year];
+		fi->xfi_Date.xd_Month=[components month];
+		fi->xfi_Date.xd_Day=[components day];
+		fi->xfi_Date.xd_Hour=[components hour];
+		fi->xfi_Date.xd_Minute=[components minute];
+		fi->xfi_Date.xd_Second=[components second];
 	}
 	else fi->xfi_Flags|=1<<6;
 

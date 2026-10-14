@@ -249,24 +249,16 @@ preservePermissions:(BOOL)preservepermissions
 	"  form: enum(prop), "     //  ... the comment is an object's property...
 	"  seld: type(comt), "     //  ... selected by the 'comt' 4CC ...
 	"  want: type(prop), "     //  ... which we want to interpret as a property (not as e.g. text).
-	"  from: 'obj '{ "         // It's the property of an object...
-	"      form: enum(indx), "
-	"      want: type(file), " //  ... of type 'file' ...
-	"      seld: @,"           //  ... selected by an alias ...
-	"      from: null() "      //  ... according to the receiving application.
-	"              }"
+	"  from: @"                // It's the property of the file URL.
 	"             }, "
 	"data: @";                 // The data is what we want to set the direct object to.
 
 	NSAppleEventDescriptor *commentdesc=[NSAppleEventDescriptor descriptorWithString:comment];
 
-	FSRef ref;
-	bzero(&ref,sizeof(ref));
-	if(FSPathMakeRef((UInt8 *)[path fileSystemRepresentation],&ref,NULL)!=noErr) return;
-
-	AEDesc filedesc;
-	AEInitializeDesc(&filedesc);
-	if(AECoercePtr(typeFSRef,&ref,sizeof(ref),typeAlias,&filedesc)!=noErr) return;
+	struct stat st;
+	if(stat([path fileSystemRepresentation],&st)!=0) return;
+	NSURL *fileurl=[[NSURL fileURLWithPath:path] URLByResolvingSymlinksInPath];
+	NSAppleEventDescriptor *filedesc=[NSAppleEventDescriptor descriptorWithFileURL:fileurl];
 
 	AEDesc builtevent,replyevent;
 	AEInitializeDesc(&builtevent);
@@ -277,9 +269,7 @@ preservePermissions:(BOOL)preservepermissions
 	OSErr err=AEBuildAppleEvent(kAECoreSuite,kAESetData,
 	typeApplSignature,&findersignature,sizeof(findersignature),
 	kAutoGenerateReturnID,kAnyTransactionID,
-	&builtevent,NULL,eventformat,&filedesc,[commentdesc aeDesc]);
-
-	AEDisposeDesc(&filedesc);
+	&builtevent,NULL,eventformat,[filedesc aeDesc],[commentdesc aeDesc]);
 
 	if(err!=noErr) return;
 
