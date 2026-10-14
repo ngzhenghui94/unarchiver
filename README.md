@@ -83,6 +83,8 @@ Publication uploads a draft, downloads and checks every asset's SHA-256, publish
 
 On failure, preserve `build/releases` and `build/update-tap`. Inspect `notarization.json`, any Apple submission and GitHub draft, and any unpushed tap commit before retrying. Never blindly resubmit an unknown Apple result, overwrite assets, or remove a build lock without checking whether its process is still running. An interrupted attempt may reserve a version; the next build advances past it.
 
+Update-key access goes through `signing.swift`: it disables Keychain interaction before reading the existing key, checks it against the bundle's pinned public key, and passes it only through an anonymous stdin pipe to Sparkle. Missing, locked, approval-required, or mismatched keys fail closed; there is no retry, key generation, rotation, key file, or permission change. Signature verification uses public-only CryptoKit without Keychain access. This helper does not make Developer ID signing or the notarization profile noninteractive; do not resume those stages while their separate no-prompt prerequisite is unresolved.
+
 After publishing future versions, consumers can run:
 
 ```sh

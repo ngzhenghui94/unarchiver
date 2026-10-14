@@ -23,6 +23,8 @@ MACHO = {bytes.fromhex(value) for value in
 def run(label, *command):
     result = subprocess.run(command, capture_output=True, text=True, cwd=ROOT)
     if result.returncode:
+        if command[:2] == ("/usr/bin/swift", str(ROOT / "signing.swift")):
+            raise RuntimeError(f"{label} failed: {result.stderr.strip()}")
         raise RuntimeError(f"{label} failed (exit {result.returncode}); private command output withheld")
     return result.stdout
 

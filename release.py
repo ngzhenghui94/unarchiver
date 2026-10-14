@@ -18,7 +18,7 @@ TAP = "ngzhenghui94/homebrew-tap"
 REMOTE = f"https://github.com/{TAP}.git"
 CHECKOUT = ROOT / "build/update-tap"
 STAGED = ROOT / "build/staging/Archiver.app"
-SPARKLE = ROOT / ".build/artifacts/sparkle/Sparkle/bin/sign_update"
+SIGNING = ROOT / "signing.swift"
 
 
 def git(*arguments):
@@ -68,13 +68,23 @@ def selftest():
             pass
         else:
             raise AssertionError("Invalid or exhausted build number accepted")
+    from unittest.mock import patch
+    failure = subprocess.CompletedProcess((), 1, stderr="OSStatus=-25293")
+    with patch("subprocess.run", return_value=failure):
+        for command, expected in ((("/usr/bin/swift", str(SIGNING)), "OSStatus=-25293"),
+                                  (("/usr/bin/codesign",), "private command output withheld")):
+            try:
+                run("Fixture", *command)
+            except RuntimeError as error:
+                assert expected in str(error)
+            else:
+                raise AssertionError("Signing failure was ignored")
     print("release selftest ok: numeric version ordering, monotonic builds, unsafe names, build limits")
 
 
 def main():
-    public_key = run("Existing update signing key", str(SPARKLE.parent / "generate_keys"), "--account", "local.swissKnife", "-p").strip()
-    if public_key != read_info(STAGED).get("SUPublicEDKey"):
-        raise RuntimeError("Bundled public key does not match the existing organization signing key")
+    public_key = read_info(STAGED)["SUPublicEDKey"]
+    run("Noninteractive update signing key", "/usr/bin/swift", str(SIGNING), "check", "local.swissKnife", public_key)
     metadata = json.loads(run("Publication access", "gh", "api", f"repos/{TAP}"))
     if metadata.get("private") or metadata.get("default_branch") != "main" or not metadata.get("permissions", {}).get("push"):
         raise RuntimeError("Expected push access to the public release repository on main")
@@ -90,7 +100,7 @@ def main():
     git("merge", "--ff-only", "origin/main")
     feed = CHECKOUT / "appcasts/archiver.xml"
     if feed.exists():
-        run("Existing feed signature", str(SPARKLE), "--account", "local.swissKnife", "--verify", str(feed))
+        run("Existing feed signature", "/usr/bin/swift", str(SIGNING), "verify", public_key, str(feed))
         xml = ET.parse(feed)
     else:
         xml = ET.ElementTree(ET.Element("rss"))

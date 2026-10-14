@@ -138,22 +138,27 @@ end
 RUBY
 fi
 if [ "$MODE" = --release ]; then
-    /usr/bin/ruby - "$PLIST" "$VERSION" "$ARCHIVE" "$OUT" "$PWD/.build/artifacts/sparkle/Sparkle/bin/sign_update" <<'RUBY'
+    /usr/bin/ruby - "$PLIST" "$VERSION" "$ARCHIVE" "$OUT" "$PWD/.build/artifacts/sparkle/Sparkle/bin/sign_update" "$PWD/signing.swift" <<'RUBY'
 require "open3"
 require "tempfile"
-plist, version, archive, out, signer = ARGV
-abort "Missing official Sparkle signing tool" unless File.executable?(signer)
+plist, version, archive, out, signer, helper = ARGV
+abort "Missing Sparkle signer or noninteractive helper" unless File.executable?(signer) && File.file?(helper)
+public_key, key_status = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :SUPublicEDKey", plist)
+abort "Missing public update key" unless key_status.success?
+public_key = public_key.strip
 build, status = Open3.capture2("/usr/libexec/PlistBuddy", "-c", "Print :CFBundleVersion", plist)
 build = build.strip
 abort "Invalid app build version" unless status.success? && build.match?(/\A\d+(?:\.\d+)*\z/)
-sign = lambda do |label, *arguments|
-  output, _errors, status = Open3.capture3(signer, "--account", "local.swissKnife", *arguments)
-  abort "#{label} failed; private command output withheld" unless status.success?
+sign = lambda do |label, mode, *arguments|
+  command = ["/usr/bin/swift", helper, mode]
+  command.concat(mode == "sign" ? [signer, "local.swissKnife", public_key] : [public_key])
+  output, _errors, status = Open3.capture3(*command, *arguments)
+  abort "#{label} failed: #{_errors.strip}" unless status.success?
   output.strip
 end
-signature = sign.call("Archive signing", "-p", archive)
+signature = sign.call("Archive signing", "sign", archive)
 abort "Invalid Sparkle EdDSA signature" unless signature.match?(/\A[A-Za-z0-9+\/]{86}==\z/)
-sign.call("Archive signature verification", "--verify", archive, signature)
+sign.call("Archive signature verification", "verify", archive, signature)
 length = File.size(archive)
 abort "Empty update archive" unless length.positive?
 url = "https://github.com/ngzhenghui94/unarchiver/releases/download/v#{version}/Archiver-#{version}-arm64.zip"
@@ -176,8 +181,8 @@ Tempfile.create(["appcast-", ".xml"], out) do |feed|
     </rss>
   XML
   feed.flush
-  sign.call("Appcast signing", feed.path)
-  sign.call("Appcast signature verification", "--verify", feed.path)
+  sign.call("Appcast signing", "sign", feed.path)
+  sign.call("Appcast signature verification", "verify", feed.path)
   File.rename(feed.path, File.join(out, "appcast.xml"))
 end
 puts "PASS: update archive and appcast EdDSA signatures verified."
